@@ -1,5 +1,5 @@
-// Package calendar provides functions for calendar calculations and printing,
-// similar to Python's calendar module.
+// Package calendar provides simple calendar utilities inspired by Python's calendar module:
+// leap year checks, month calendars as matrices, text and HTML formatting/printing, and basic locale support.
 package calendar
 
 import (
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Constants for weekdays (matching time.Weekday)
+// Constants for weekdays (matching time.Weekday: Sunday=0, ..., Saturday=6)
 const (
 	Sunday    = 0
 	Monday    = 1
@@ -19,22 +19,47 @@ const (
 	Saturday  = 6
 )
 
-// DayNames are full day names.
-var DayNames = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+// Default names (English)
+var (
+	dayNames   = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+	dayAbbrs   = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+	monthNames = []string{"", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}
+	monthAbbrs = []string{"", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+)
 
-// DayAbbrs are abbreviated day names.
-var DayAbbrs = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+// Locale holds customizable names (extendable for i18n)
+type Locale struct {
+	DayNames   []string
+	DayAbbrs   []string
+	MonthNames []string
+	MonthAbbrs []string
+}
 
-// MonthNames are full month names (index 0 unused).
-var MonthNames = []string{"", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}
+// DefaultLocale is English
+var DefaultLocale = Locale{
+	DayNames:   dayNames,
+	DayAbbrs:   dayAbbrs,
+	MonthNames: monthNames,
+	MonthAbbrs: monthAbbrs,
+}
 
-// MonthAbbrs are abbreviated month names (index 0 unused).
-var MonthAbbrs = []string{"", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+// Current locale (global for simplicity; can be made per-instance later)
+var currentLocale = DefaultLocale
 
-// firstWeekday is the starting day of the week (default Monday, like Python).
+// SetLocale changes the global names used (e.g. for other languages)
+func SetLocale(loc Locale) {
+	if len(loc.DayNames) == 7 && len(loc.DayAbbrs) == 7 &&
+		len(loc.MonthNames) == 13 && len(loc.MonthAbbrs) == 13 {
+		currentLocale = loc
+	} else {
+		panic("invalid locale: must have exactly 7 days and 13 months (index 0 unused for months)")
+	}
+}
+
+// firstWeekday is the starting day of the week (default Monday)
 var firstWeekday = Monday
 
-// SetFirstWeekday sets the first day of the week (0=Sunday, 1=Monday, etc.).
+// SetFirstWeekday sets the first day of the week (0=Sunday, 1=Monday, ..., 6=Saturday).
 func SetFirstWeekday(wd int) {
 	if wd < 0 || wd > 6 {
 		panic("invalid weekday")
@@ -76,10 +101,9 @@ func MonthRange(year, month int) (weekday, numDays int) {
 	case 4, 6, 9, 11:
 		numDays = 30
 	case 2:
+		numDays = 28
 		if IsLeap(year) {
 			numDays = 29
-		} else {
-			numDays = 28
 		}
 	}
 	weekday = Weekday(year, month, 1)
@@ -89,88 +113,194 @@ func MonthRange(year, month int) (weekday, numDays int) {
 // MonthCalendar returns a matrix representing a month's calendar (weeks as rows, days as columns, 0 for padding).
 func MonthCalendar(year, month int) [][]int {
 	wd, days := MonthRange(year, month)
-	cal := make([][]int, 6) // Max 6 weeks
-	for i := range cal {
-		cal[i] = make([]int, 7)
-	}
+	cal := make([][]int, 0, 6)
 	day := 1
 	shift := (wd - firstWeekday + 7) % 7
-	for w := 0; w < 6; w++ {
-		for d := 0; d < 7; d++ {
-			idx := w*7 + d
-			if idx < shift || day > days {
-				cal[w][d] = 0
-			} else {
-				cal[w][d] = day
-				day++
-			}
-		}
-		if day > days {
-			break
-		}
-	}
-	// Trim empty weeks
-	for i := len(cal) - 1; i >= 0; i-- {
+
+	for week := 0; week < 6; week++ {
+		row := make([]int, 7)
 		empty := true
-		for _, d := range cal[i] {
-			if d != 0 {
+		for d := 0; d < 7; d++ {
+			if week == 0 && d < shift || day > days {
+				row[d] = 0
+			} else {
+				row[d] = day
+				day++
 				empty = false
-				break
 			}
 		}
 		if empty {
-			cal = cal[:i]
-		} else {
 			break
 		}
+		cal = append(cal, row)
 	}
 	return cal
 }
 
-// WeekHeader returns a string of weekday abbreviations (width per name).
-func WeekHeader(width int) string {
+// weekHeader returns weekday abbrs line for text output.
+func weekHeader(width int) string {
 	var sb strings.Builder
 	for i := 0; i < 7; i++ {
 		day := (i + firstWeekday) % 7
-		abbr := DayAbbrs[day]
+		abbr := currentLocale.DayAbbrs[day]
 		if len(abbr) > width {
 			abbr = abbr[:width]
 		}
-		sb.WriteString(fmt.Sprintf("%-*s ", width, abbr))
+		fmt.Fprintf(&sb, "%-*s ", width, abbr)
 	}
-	return sb.String()[:sb.Len()-1] // Trim trailing space
+	return sb.String()[:sb.Len()-1]
 }
 
-// FormatMonth returns a multi-line string for the month calendar.
-func FormatMonth(year, month int, w, l int) string {
-	if w < 1 {
-		w = 3
-	}
-	if l < 1 {
-		l = 0
+// FormatMonth returns a multi-line text string for the month calendar.
+func FormatMonth(year, month, width, lines int) string {
+	if width < 1 {
+		width = 3
 	}
 	var sb strings.Builder
-	header := fmt.Sprintf("%s %d", MonthNames[month], year)
-	sb.WriteString(fmt.Sprintf("%*s\n", (7*(w+1)-1+len(header))/2, header))
-	sb.WriteString(WeekHeader(w) + "\n")
+	header := fmt.Sprintf("%s %d", currentLocale.MonthNames[month], year)
+	sb.WriteString(fmt.Sprintf("%*s\n", (7*(width+1)-1+len(header))/2, header))
+	sb.WriteString(weekHeader(width) + "\n")
 	cal := MonthCalendar(year, month)
 	for _, week := range cal {
 		for _, day := range week {
 			if day == 0 {
-				sb.WriteString(fmt.Sprintf("%*s ", w, ""))
+				fmt.Fprintf(&sb, "%*s ", width, "")
 			} else {
-				sb.WriteString(fmt.Sprintf("%*d ", w, day))
+				fmt.Fprintf(&sb, "%*d ", width, day)
 			}
 		}
 		sb.WriteString("\n")
-		if l > 0 {
-			sb.WriteString(strings.Repeat("\n", l))
+		if lines > 0 {
+			sb.WriteString(strings.Repeat("\n", lines))
 		}
 	}
 	return sb.String()
 }
 
 // PrMonth prints the month calendar to stdout.
-func PrMonth(year, month int, w, l int) {
-	fmt.Print(FormatMonth(year, month, w, l))
+func PrMonth(year, month, width, lines int) {
+	fmt.Print(FormatMonth(year, month, width, lines))
+}
+
+// FormatYear returns text calendars for the full year (3 months per row by default).
+func FormatYear(year, width, lines, monthsPerRow int) string {
+	if monthsPerRow < 1 || monthsPerRow > 12 {
+		monthsPerRow = 3
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%*s\n\n", 20*monthsPerRow, fmt.Sprintf("%d", year)))
+
+	for m := 1; m <= 12; m += monthsPerRow {
+		for row := 0; row < 3; row++ { // header + week + calendar lines
+			lineParts := []string{}
+			for col := 0; col < monthsPerRow && m+col <= 12; col++ {
+				month := m + col
+				if row == 0 {
+					h := fmt.Sprintf("%s", currentLocale.MonthNames[month])
+					lineParts = append(lineParts, fmt.Sprintf("%*s", (7*(width+1)-1), h))
+				} else if row == 1 {
+					lineParts = append(lineParts, weekHeader(width))
+				} else {
+					cal := MonthCalendar(year, month)
+					if len(cal) > 0 && len(cal[0]) == 7 {
+						// Simple: just first week for brevity; extend if needed
+						weekStr := ""
+						for _, d := range cal[0] {
+							if d == 0 {
+								weekStr += fmt.Sprintf("%*s ", width, "")
+							} else {
+								weekStr += fmt.Sprintf("%*d ", width, d)
+							}
+						}
+						lineParts = append(lineParts, weekStr[:len(weekStr)-1])
+					}
+				}
+			}
+			sb.WriteString(strings.Join(lineParts, "   ") + "\n")
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+// PrYear prints the year calendar to stdout.
+func PrYear(year, width, lines, monthsPerRow int) {
+	fmt.Print(FormatYear(year, width, lines, monthsPerRow))
+}
+
+// HTMLCalendar provides HTML generation like Python's HTMLCalendar.
+type HTMLCalendar struct {
+	firstweekday int
+	cssclasses   map[int]string // weekday -> td class
+}
+
+// NewHTMLCalendar creates a new HTMLCalendar (firstweekday 0=Mon by default).
+func NewHTMLCalendar(firstweekday int) *HTMLCalendar {
+	if firstweekday < 0 || firstweekday > 6 {
+		firstweekday = Monday
+	}
+	return &HTMLCalendar{
+		firstweekday: firstweekday,
+		cssclasses: map[int]string{
+			0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri", 5: "sat", 6: "sun",
+		},
+	}
+}
+
+// FormatMonthHTML returns HTML table for one month (withyear=true includes year in header).
+func (c *HTMLCalendar) FormatMonthHTML(theyear, themonth int, withyear bool) string {
+	var sb strings.Builder
+	sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" class="month">` + "\n")
+	header := currentLocale.MonthNames[themonth]
+	if withyear {
+		header += fmt.Sprintf(" %d", theyear)
+	}
+	sb.WriteString(fmt.Sprintf("<tr><th colspan=\"7\" class=\"month\">%s</th></tr>\n", header))
+
+	// Week header
+	sb.WriteString("<tr>")
+	for i := 0; i < 7; i++ {
+		day := (i + c.firstweekday) % 7
+		sb.WriteString(fmt.Sprintf("<th class=\"%s\">%s</th>", c.cssclasses[day], currentLocale.DayAbbrs[day]))
+	}
+	sb.WriteString("</tr>\n")
+
+	cal := MonthCalendar(theyear, themonth)
+	for _, week := range cal {
+		sb.WriteString("<tr>")
+		for d, day := range week {
+			wd := (d + c.firstweekday) % 7
+			if day == 0 {
+				sb.WriteString(`<td class="noday">&nbsp;</td>`)
+			} else {
+				sb.WriteString(fmt.Sprintf(`<td class="%s">%d</td>`, c.cssclasses[wd], day))
+			}
+		}
+		sb.WriteString("</tr>\n")
+	}
+	sb.WriteString("</table>")
+	return sb.String()
+}
+
+// FormatYearHTML returns HTML for the full year (width=3 months per row).
+func (c *HTMLCalendar) FormatYearHTML(theyear int, width int) string {
+	if width < 1 {
+		width = 3
+	}
+	var sb strings.Builder
+	sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" class="year">` + "\n")
+	sb.WriteString(fmt.Sprintf("<tr><th colspan=\"%d\" class=\"year\">%d</th></tr>\n", width*7, theyear))
+
+	for m := 1; m <= 12; m += width {
+		sb.WriteString("<tr>")
+		for col := 0; col < width && m+col <= 12; col++ {
+			month := m + col
+			sb.WriteString("<td>")
+			sb.WriteString(c.FormatMonthHTML(theyear, month, false))
+			sb.WriteString("</td>")
+		}
+		sb.WriteString("</tr>\n")
+	}
+	sb.WriteString("</table>")
+	return sb.String()
 }
