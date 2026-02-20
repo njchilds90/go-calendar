@@ -125,3 +125,52 @@ func TestFormatYearHTML(t *testing.T) {
 		t.Errorf("FormatYearHTML missing year header")
 	}
 }
+
+func TestIterators(t *testing.T) {
+	SetFirstWeekday(Monday)
+	days := 0
+	for range IterMonthDays(2026, 2) {
+		days++
+	}
+	if days != 35 { // shift + 28 days example
+		t.Errorf("IterMonthDays yielded %d items, want ~35", days)
+	}
+
+	dates := 0
+	for range IterMonthDates(2026, 2) {
+		dates++
+	}
+	if dates < 28 || dates > 42 {
+		t.Errorf("IterMonthDates yielded %d dates, want 28–42", dates)
+	}
+}
+
+func TestHolidaySupport(t *testing.T) {
+	ClearHolidays()
+	d := time.Date(2026, 2, 14, 0, 0, 0, 0, time.UTC)
+	RegisterHoliday(d, "Valentine's Day")
+
+	isHol, name := IsHoliday(d)
+	if !isHol || name != "Valentine's Day" {
+		t.Errorf("IsHoliday failed: got %v %q", isHol, name)
+	}
+
+	isHol, _ = IsHoliday(time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC))
+	if isHol {
+		t.Error("False positive holiday")
+	}
+}
+
+func TestFormatMonthUsesLocale(t *testing.T) {
+	orig := currentLocale
+	SetLocale(Locale{
+		MonthNames: []string{"", "Enero", "Febrero", /* ... fill 13 */ },
+		// ... minimal for test
+	})
+	defer SetLocale(orig) // restore
+
+	s := FormatMonth(2026, 2, 2, 0)
+	if !strings.Contains(s, "Febrero 2026") {
+		t.Error("Locale not applied in FormatMonth")
+	}
+}
