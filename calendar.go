@@ -1,16 +1,25 @@
-// Package calendar provides calendar utilities inspired by Python's calendar module.
-// It includes leap year checks, weekday calculations, month calendar matrices,
-// configurable text and HTML formatting, year-at-a-glance views, and basic locale support
-// for month and day names.
+// Package calendar provides calendar utilities inspired by Python's standard calendar module.
+// It offers leap year detection, weekday and month calculations, calendar matrices as [][]int,
+// configurable text and HTML output, year-at-a-glance views, and basic locale support for day/month names.
 //
-// All operations are timezone-agnostic (using UTC via time.Date).
+// All functions are timezone-agnostic (using UTC via time.Date).
+//
+// Key features:
+//   - IsLeap, LeapDays
+//   - Weekday, MonthRange, MonthCalendar
+//   - FormatMonth / PrMonth (text)
+//   - FormatMonthHTML / FormatYearHTML (HTML tables)
+//   - FormatYear / PrYear (compact year view)
+//   - SetFirstWeekday, SetLocale (custom names)
 //
 // Example:
 //
+//	import "github.com/njchilds90/go-calendar/calendar"
+//
 //	calendar.SetFirstWeekday(calendar.Monday)
-//	calendar.PrMonth(2026, 2, 3, 0) // prints text calendar
+//	calendar.PrMonth(2026, 2, 3, 0)
 //	hc := calendar.NewHTMLCalendar(calendar.Monday)
-//	html := hc.FormatMonthHTML(2026, 2, true)
+//	htmlMonth := hc.FormatMonthHTML(2026, 2, true)
 package calendar
 
 import (
