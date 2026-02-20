@@ -106,3 +106,22 @@ Mon Tue Wed Thu Fri Sat Sun
 		t.Errorf("FormatMonth = %q, want %q", got, want)
 	}
 }
+
+func TestFormatMonthHTML(t *testing.T) {
+	SetFirstWeekday(Monday)
+	hc := NewHTMLCalendar(Monday)
+	got := hc.FormatMonthHTML(2026, 2, true)
+	if !strings.Contains(got, `<table border="0" cellpadding="0" cellspacing="0" class="month">`) ||
+		!strings.Contains(got, "February 2026") {
+		t.Errorf("FormatMonthHTML missing expected content: %s", got[:200])
+	}
+}
+
+func TestFormatYearHTML(t *testing.T) {
+	hc := NewHTMLCalendar(Monday)
+	got := hc.FormatYearHTML(2026, 3)
+	if !strings.Contains(got, `<table border="0" cellpadding="0" cellspacing="0" class="year">`) ||
+		!strings.Contains(got, "<th colspan=\"21\" class=\"year\">2026</th>") {
+		t.Errorf("FormatYearHTML missing year header")
+	}
+}
